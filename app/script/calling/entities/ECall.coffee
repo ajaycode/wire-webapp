@@ -148,12 +148,12 @@ class z.calling.entities.ECall
   check_group_call: (termination_reason) =>
     @leave_call termination_reason unless @participants().length
 
-  deactivate_call: (termination_reason = z.calling.enum.TERMINATION_REASON.SELF_USER) =>
+  deactivate_call: (e_call_message_et, termination_reason = z.calling.enum.TERMINATION_REASON.SELF_USER) =>
     return if @participants().length
 
     reason = if @state() in z.calling.enum.CallStateGroups.WAS_MISSED then z.calling.enum.TERMINATION_REASON.MISSED else z.calling.enum.TERMINATION_REASON.COMPLETED
     @termination_reason = termination_reason
-    @v3_call_center.inject_deactivate_event e_call_message_et, e_call_et.creating_user, reason
+    @v3_call_center.inject_deactivate_event e_call_message_et, @creating_user, reason
     @v3_call_center.delete_call @id
 
   delete_call: =>
@@ -193,10 +193,11 @@ class z.calling.entities.ECall
     .then =>
       if @is_group()
         additional_payload = @v3_call_center.create_additional_payload @id
-        @send_e_call_event z.calling.mapper.ECallMessageMapper.build_group_leave false, @session_id, additional_payload
+        e_call_message_et = z.calling.mapper.ECallMessageMapper.build_group_leave false, @session_id, additional_payload
+        @send_e_call_event e_call_message_et
 
       @set_self_state false, termination_reason
-      @deactivate_call termination_reason
+      @deactivate_call e_call_message_et, termination_reason
 
   reject_call: =>
     @state z.calling.enum.CallState.REJECTED

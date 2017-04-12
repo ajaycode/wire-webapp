@@ -67,8 +67,6 @@ class z.calling.CallingRepository
 
     @flow_status = undefined
 
-    @protocol_version_group = ko.pureComputed => @calling_config()?.features?.protocol_version_group
-
     @share_call_states()
     @subscribe_to_events()
 
@@ -115,7 +113,7 @@ class z.calling.CallingRepository
         protocol_version = z.calling.enum.PROTOCOL.VERSION_3
 
       @logger.log "Selected outgoing call protocol version: #{protocol_version}",
-        {conversation_type: conversation_et?.type(), backend_protocol_group: @protocol_version_group(), use_v3_api: @use_v3_api}
+        {conversation_type: conversation_et?.type(), use_v3_api: @use_v3_api}
       return protocol_version
 
   # Initiate calling config update.

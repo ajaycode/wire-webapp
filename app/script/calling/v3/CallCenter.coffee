@@ -161,7 +161,7 @@ class z.calling.v3.CallCenter
     .then (e_call_et) ->
       return e_call_et.delete_e_participant e_call_message_et.user_id, e_call_message_et.client_id
     .then (e_call_et) =>
-      return e_call_et.deactivate_call z.calling.enum.TERMINATION_REASON.OTHER_USER
+      return e_call_et.deactivate_call e_call_message_et, z.calling.enum.TERMINATION_REASON.OTHER_USER
     .catch (error) =>
       if error.type isnt z.calling.v3.CallError::TYPE.NOT_FOUND
         @inject_deactivate_event e_call_message_et
@@ -256,7 +256,7 @@ class z.calling.v3.CallCenter
       @_confirm_e_call_message e_call_et, e_call_message_et
       return e_call_et.delete_e_participant e_call_message_et.user_id
     .then (e_call_et) =>
-      return e_call_et.deactivate_call z.calling.enum.TERMINATION_REASON.OTHER_USER
+      return e_call_et.deactivate_call e_call_message_et, z.calling.enum.TERMINATION_REASON.OTHER_USER
     .catch (error) ->
       throw error unless error.type is z.calling.v3.CallError::TYPE.NOT_FOUND
 
@@ -340,8 +340,8 @@ class z.calling.v3.CallCenter
   @param e_call_message_et [z.calling.entities.E_CALL_MESSAGE] E-call message to validate
   ###
   _validate_message_type: (e_call_message_et) ->
-    console.log @conversation_repository.get_conversation_by_id()
-    @conversation_repository.get_conversation_by_id e_call_message_et.conversation_id
+    console.log 'validate message', e_call_message_et
+    @conversation_repository.get_conversation_by_id_async e_call_message_et.conversation_id
     .then (conversation_et) ->
       if conversation_et.is_one2one()
         group_message_types =  [
@@ -406,6 +406,29 @@ class z.calling.v3.CallCenter
     if additional_payload
       payload = $.extend payload, additional_payload
     return payload
+
+  ###
+  Send an e-call event.
+  @param conversation_et [z.entity] Conversation to send message in
+  @param e_call_message_et [z.calling.entities.ECallMessage] E-call message entity
+  ###
+  send_e_call_event: (conversation_et, e_call_message_et) =>
+    throw new z.calling.v3.CallError z.calling.v3.CallError::TYPE.WRONG_PAYLOAD_FORMAT if not _.isObject e_call_message_et
+
+    @get_e_call_by_id conversation_et.id
+    .then (e_call_et) ->
+      if e_call_message_et.type in [z.calling.enum.E_CALL_MESSAGE_TYPE.HANGUP, z.calling.enum.E_CALL_MESSAGE_TYPE.PROP_SYNC]
+        return e_flow_et.send_message e_call_message_et for e_flow_et in e_call_et.get_flows()
+      throw new z.calling.v3.CallError z.calling.v3.CallError::TYPE.NO_DATA_CHANNEL
+    .catch (error) =>
+      throw error if error.type not in [z.calling.v3.CallError::TYPE.NO_DATA_CHANNEL , z.calling.v3.CallError::TYPE.NOT_FOUND]
+
+      @logger.debug "Sending e-call '#{e_call_message_et.type}' message to conversation '#{conversation_et.id}'", e_call_message_et.to_JSON()
+      @_limit_message_recipients conversation_et, e_call_message_et
+      .then ([client_user_map, precondition_option]) =>
+        if e_call_message_et.type is z.calling.enum.E_CALL_MESSAGE_TYPE.HANGUP
+          e_call_message_et.type = z.calling.enum.E_CALL_MESSAGE_TYPE.CANCEL
+        @conversation_repository.send_e_call conversation_et, e_call_message_et, client_user_map, precondition_option
 
   _confirm_e_call_message: (e_call_et, incoming_e_call_message_et) ->
     return unless incoming_e_call_message_et.response is false
@@ -510,7 +533,7 @@ class z.calling.v3.CallCenter
     .then (e_call_et) =>
       @logger.debug "Leaving e-call in conversation '#{conversation_id}'", e_call_et
       @media_stream_handler.release_media_stream()
-      @e_call_et.leave_call termination_reason
+      e_call_et.leave_call termination_reason
     .catch (error) ->
       throw error unless error.type is z.calling.v3.CallError::TYPE.NOT_FOUND
 
